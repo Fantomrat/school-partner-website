@@ -34,9 +34,24 @@ CREATE TABLE IF NOT EXISTS `products` (
   `short_description` text DEFAULT NULL,
   `full_description` text DEFAULT NULL,
   `image_url` varchar(255) DEFAULT NULL,
-  `category_id` int(11) DEFAULT NULL,
   `is_available` tinyint(1) DEFAULT 1,
   PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Новая таблица категорий
+CREATE TABLE IF NOT EXISTS `categories` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Таблица связи товаров и категорий (многие-ко-многим)
+CREATE TABLE IF NOT EXISTS `product_categories` (
+  `product_id` int(11) NOT NULL,
+  `category_id` int(11) NOT NULL,
+  PRIMARY KEY (`product_id`, `category_id`),
+  FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`category_id`) REFERENCES `categories`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `requests` (
@@ -45,13 +60,14 @@ CREATE TABLE IF NOT EXISTS `requests` (
   `name` varchar(255) NOT NULL,
   `phone` varchar(50) NOT NULL,
   `created_at` datetime NOT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 SQL;
 
     $pdo->exec($sql);
 
-    // Вставка данных по умолчанию, если пусто
+    // Вставка данных по умолчанию
     $countAdmins = $pdo->query("SELECT COUNT(*) FROM admins")->fetchColumn();
     if ($countAdmins == 0) {
         $stmt = $pdo->prepare("INSERT INTO admins (username, password_hash) VALUES (?, ?)");
@@ -70,20 +86,40 @@ SQL;
         $stmt->execute(['<p><strong>Адрес:</strong> г. Москва, ул. Примерная, д. 123<br><strong>Телефон:</strong> +7 (123) 456-78-90<br><strong>Email:</strong> info@example.com</p>']);
     }
 
+    // Добавляем категории
+    $countCategories = $pdo->query("SELECT COUNT(*) FROM categories")->fetchColumn();
+    if ($countCategories == 0) {
+        $stmt = $pdo->prepare("INSERT INTO categories (name) VALUES (?)");
+        $categories = ['Мебель', 'Техника', 'Лаборатории', 'Спортинвентарь'];
+        foreach ($categories as $c) {
+            $stmt->execute([$c]);
+        }
+    }
+
+    // Добавляем товары
     $countProducts = $pdo->query("SELECT COUNT(*) FROM products")->fetchColumn();
     if ($countProducts == 0) {
-        $stmt = $pdo->prepare("INSERT INTO products (name, price, short_description, full_description, image_url, category_id, is_available) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt = $pdo->prepare("INSERT INTO products (name, price, short_description, full_description, image_url, is_available) VALUES (?, ?, ?, ?, ?, ?)");
         $products = [
-            ['Стол ученический регулируемый', 4500.00, 'Регулируемый по высоте стол для начальной и средней школы.', 'Прочный металлический каркас, пластиковая столешница. Высота регулируется в трёх положениях.', 'uploads/product_68934ce9ed8f79.76371176.jpg', 1, 1],
-            ['Интерактивная доска SmartBoard', 38000.00, 'Электронная доска с сенсорным управлением.', 'Многофункциональная доска для интерактивных занятий. Подключается к ПК, совместима с ПО для образования.', 'uploads/product_68934ce4ba8bb4.63388797.jpg', 2, 1],
-            ['Комплект лаборатории физики', 72000.00, 'Оборудование для проведения физических экспериментов.', 'Полный набор оборудования для школы: электричество, оптика, механика, термодинамика.', 'uploads/product_68934cdfe5af94.84059929.jpg', 3, 1],
-            ['Стул ученический с регулируемой высотой', 2300.00, 'Металлический каркас, регулируемая высота.', 'Прочный ученический стул с антивандальной конструкцией. Регулировка для трёх возрастных групп.', 'uploads/product_68934cd6109c24.08131522.jpg', 1, 1],
-            ['Шкаф для хранения ноутбуков', 16500.00, 'Металлический шкаф на 15 ноутбуков.', 'Безопасное хранение и зарядка ноутбуков. Замок, вентиляция, розетки внутри.', 'uploads/product_68934cc860d230.23277403.webp', 2, 1],
-            ['Набор спортивного инвентаря', 15000.00, 'Комплект для уроков физкультуры.', 'Мячи, скакалки, конусы, координационные лестницы и другое оборудование для подвижных игр.', 'uploads/product_68934cbe7e1fc3.91218381.jpg', 4, 1],
+            ['Стол ученический регулируемый', 4500.00, 'Регулируемый по высоте стол для начальной и средней школы.', 'Прочный металлический каркас, пластиковая столешница. Высота регулируется в трёх положениях.', 'uploads/product_68934ce9ed8f79.76371176.jpg', 1],
+            ['Интерактивная доска SmartBoard', 38000.00, 'Электронная доска с сенсорным управлением.', 'Многофункциональная доска для интерактивных занятий. Подключается к ПК, совместима с ПО для образования.', 'uploads/product_68934ce4ba8bb4.63388797.jpg', 1],
+            ['Комплект лаборатории физики', 72000.00, 'Оборудование для проведения физических экспериментов.', 'Полный набор оборудования для школы: электричество, оптика, механика, термодинамика.', 'uploads/product_68934cdfe5af94.84059929.jpg', 1],
+            ['Стул ученический с регулируемой высотой', 2300.00, 'Металлический каркас, регулируемая высота.', 'Прочный ученический стул с антивандальной конструкцией. Регулировка для трёх возрастных групп.', 'uploads/product_68934cd6109c24.08131522.jpg', 1],
+            ['Шкаф для хранения ноутбуков', 16500.00, 'Металлический шкаф на 15 ноутбуков.', 'Безопасное хранение и зарядка ноутбуков. Замок, вентиляция, розетки внутри.', 'uploads/product_68934cc860d230.23277403.webp', 1],
+            ['Набор спортивного инвентаря', 15000.00, 'Комплект для уроков физкультуры.', 'Мячи, скакалки, конусы, координационные лестницы и другое оборудование для подвижных игр.', 'uploads/product_68934cbe7e1fc3.91218381.jpg', 1],
         ];
         foreach ($products as $p) {
             $stmt->execute($p);
         }
+
+        // Привязка товаров к категориям
+        $stmtLink = $pdo->prepare("INSERT INTO product_categories (product_id, category_id) VALUES (?, ?)");
+        $stmtLink->execute([1, 1]); // Стол → Мебель
+        $stmtLink->execute([2, 2]); // Доска → Техника
+        $stmtLink->execute([3, 3]); // Лаборатория → Лаборатории
+        $stmtLink->execute([4, 1]); // Стул → Мебель
+        $stmtLink->execute([5, 2]); // Шкаф → Техника
+        $stmtLink->execute([6, 4]); // Спортинвентарь → Спортинвентарь
     }
 
     file_put_contents($lockFile, "table creation completed at " . date('Y-m-d H:i:s'));

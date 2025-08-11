@@ -13,16 +13,29 @@ if (!$id) {
     exit;
 }
 
+// Получаем все категории
+$allCategories = $pdo->query("SELECT id, name FROM categories ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
+
+// Получаем выбранные категории для товара
+$stmt = $pdo->prepare("SELECT category_id FROM product_categories WHERE product_id = ?");
+$stmt->execute([$id]);
+$productCategories = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'category_id');
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = $_POST['name'] ?? '';
     $price = $_POST['price'] ?? 0;
     $short = $_POST['short_description'] ?? '';
     $full = $_POST['full_description'] ?? '';
     $available = isset($_POST['is_available']) ? 1 : 0;
+    $categories = $_POST['categories'] ?? [];
 
-    $image_url = $product['image_url']; // сохраняем старую картинку по умолчанию
+    // Получаем текущие данные о товаре
+    $stmt = $pdo->prepare("SELECT image_url FROM products WHERE id = ?");
+    $stmt->execute([$id]);
+    $product = $stmt->fetch(PDO::FETCH_ASSOC);
+    $image_url = $product['image_url'];
 
-    // Загрузка новой картинки, если она была отправлена
+    // Загрузка новой картинки
     if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
         $tmp_name = $_FILES['image']['tmp_name'];
         $ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
@@ -33,15 +46,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $image_url = 'uploads/' . $new_filename;
     }
 
+    // Обновляем товар
     if ($name && $price > 0) {
         $stmt = $pdo->prepare("UPDATE products SET name = ?, price = ?, short_description = ?, full_description = ?, is_available = ?, image_url = ? WHERE id = ?");
         $stmt->execute([$name, $price, $short, $full, $available, $image_url, $id]);
+
+        // Обновляем связи категорий
+        $pdo->prepare("DELETE FROM product_categories WHERE product_id = ?")->execute([$id]);
+        $stmt = $pdo->prepare("INSERT INTO product_categories (product_id, category_id) VALUES (?, ?)");
+        foreach ($categories as $cat_id) {
+            $stmt->execute([$id, $cat_id]);
+        }
+
         header('Location: index.php');
         exit;
     }
 }
 
-
+// Получаем товар для формы
 $stmt = $pdo->prepare('SELECT * FROM products WHERE id = ?');
 $stmt->execute([$id]);
 $product = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -51,7 +73,6 @@ if (!$product) {
     exit;
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -72,24 +93,34 @@ if (!$product) {
     <textarea name="short_description" placeholder="Краткое описание" class="w-full border rounded p-2"><?= htmlspecialchars($product['short_description']) ?></textarea>
     <textarea name="full_description" placeholder="Полное описание" class="w-full border rounded p-2"><?= htmlspecialchars($product['full_description']) ?></textarea>
 
+    <div>
+      <p class="mb-1 text-gray-700">Категории:</p>
+      <select name="categories[]" multiple class="w-full border rounded p-2 h-40">
+        <?php foreach ($allCategories as $cat): ?>
+          <option value="<?= $cat['id'] ?>" <?= in_array($cat['id'], $productCategories) ? 'selected' : '' ?>>
+            <?= htmlspecialchars($cat['name']) ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+
     <?php if ($product['image_url']): ?>
-  <div>
-    <p class="mb-1 text-gray-700">Текущее изображение:</p>
-    <img src="../<?= htmlspecialchars($product['image_url']) ?>" alt="Текущее изображение" class="w-48 h-auto rounded shadow mb-4">
-  </div>
-<?php endif; ?>
+      <div>
+        <p class="mb-1 text-gray-700">Текущее изображение:</p>
+        <img src="../<?= htmlspecialchars($product['image_url']) ?>" alt="Текущее изображение" class="w-48 h-auto rounded shadow mb-4">
+      </div>
+    <?php endif; ?>
 
-<label class="block">
-  <span class="text-gray-700">Новое изображение (если нужно заменить):</span>
-  <input type="file" name="image" accept="image/*" class="mt-1 block w-full border border-gray-300 rounded p-2">
-</label>
-
+    <label class="block">
+      <span class="text-gray-700">Новое изображение (если нужно заменить):</span>
+      <input type="file" name="image" accept="image/*" class="mt-1 block w-full border border-gray-300 rounded p-2">
+    </label>
 
     <label class="inline-flex items-center space-x-2 cursor-pointer">
       <input type="checkbox" name="is_available" <?= $product['is_available'] ? 'checked' : '' ?>>
       <span>В наличии</span>
     </label>
-    <br>
+
     <button class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Сохранить</button>
   </form>
 
